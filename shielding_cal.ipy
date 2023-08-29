@@ -1,0 +1,63 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jul 25 16:40:10 2023
+
+@autho{r: ychoi
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+
+%matplotlib inline
+
+with open('lead.txt', 'r') as file:
+    energy = []
+    mass_coe = []
+    
+    for line in file:
+        columns = line.split()
+        ene = columns[0]
+        mass = columns[1]
+    
+        energy.append(ene)
+        mass_coe.append(mass)
+
+energy_arr = np.array(energy, dtype=float)
+mass_coe_arr = np.array(mass_coe, dtype=float)
+
+log_energy = np.log(energy_arr)
+log_mass_coe = np.log(mass_coe_arr)
+
+tar_energy = 0.662
+x_to_interpolate = np.log(tar_energy)
+mass_coeff = np.exp(np.interp(x_to_interpolate, log_energy, log_mass_coe))
+
+print("Mass attenuation coefficient (mu/rho) at",tar_energy,"MeV = ", mass_coeff)
+
+plt.plot(energy_arr, mass_coe_arr, '.')#, label='Data points')
+plt.xscale('log')
+plt.yscale('log')
+plt.xlabel('Energy (MeV)', fontsize = 15)
+plt.ylabel('Mass Coefficient (cm^2/g)', fontsize = 15)
+plt.title('Lead (z = 82) Mass Attenuation Coefficients', fontsize = 15)
+
+# Adding the interpolation point to the plot
+plt.plot(tar_energy, mass_coeff, 'ro', label='energy:'+str(tar_energy)+' MeV')
+plt.legend()
+plt.grid()
+plt.show()
+
+# thickness of shield
+
+def cal_thickness(ini_energy, tar_energy, mass_coeff):
+    linear_coeff = mass_coeff * 11.35
+    thickness = - np.log(tar_energy / ini_energy) / linear_coeff
+    return thickness
+
+thickness = cal_thickness(4.731, 0.034, mass_coeff)
+print('The required thickness of the shield: ',f'{thickness:.3f}', 'cm')
+
+
+
+
+    
+    

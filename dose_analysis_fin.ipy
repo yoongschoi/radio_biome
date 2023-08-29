@@ -1,0 +1,340 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Jul  8 15:48:43 2023
+
+@author: ychoi
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from IPython import get_ipython
+import matplotlib.colors as mcolors
+from matplotlib.colors import Normalize
+from scipy import stats
+
+def process_file(source, soil, photons, distance, num_source):
+    file_name = source +'_'+soil +'_'+ photons +'_'+distance+'_'+ num_source
+    
+    with open(file_name+'.txt', 'r') as file:
+        next(file)
+        next(file)
+    
+        regions = []
+        dose = []
+    
+        for line in file:
+            columns = line.split()
+            
+            region = columns[0]
+          #  dose_value = float(columns[8]) *float(photons) 
+            dose_value = float(columns[8]) #*1e6       # 1Mbq scenario; required:3.6e7
+    
+            regions.append(region)
+            dose.append(dose_value)     # in Gy(J/kg)
+
+    # make subpots 
+    subpots = []
+    subpots_converted = []
+    
+    convert = 3600 * 1e6               # convert unit from Gy to mSv/hrr
+    # sublayers = []
+    for i in range(0,121,5):
+        
+        #collect = dose[i:i+5]
+        #collect = [(sub * convert) for sub in collect]
+        #sublayers.append(collect)
+        
+        subpot = (sum(dose[i:i+5])) / 5
+        subpots.append(subpot)
+        
+        subpot = subpot * convert 
+        subpots_converted.append(subpot)
+        
+    # make layers
+    big_layers = []
+    big_layers_converted = []
+    
+    layers_ind = {}
+    layers_ind_converted = {}
+    
+    
+    for i in range(5):
+        start_index = i
+        end_index = 125 - (5 - i - 1)
+        layer_index = list(range(start_index, end_index, 5))
+        
+        # sublayers summed up for one big layer
+        big_layer = (sum(dose[j] for j in layer_index)) / 25
+        big_layers.append(big_layer)
+        
+        
+        #####################################################################
+        # convert for Gy to μSv/hr; (1e6) for total activity of 1MBq scenario 
+        #####################################################################
+        
+        big_layer_converted = big_layer *(36e6) * 0.95 * convert
+        big_layers_converted.append(big_layer_converted)
+        
+        # store each value of sublayers
+        
+        layer_values = [dose[j] for j in layer_index]
+        layers_ind[f"layer {i+1}"] = layer_values
+        
+        #####################################################################
+        # convert for Gy to μSv/hr; (1e6) for total activity of 1MBq scenario 
+        #####################################################################
+        
+        layer_values_converted = [(layer * (36.3e6)* 0.95 * convert) for layer in layer_values]
+        layers_ind_converted[f"layer {i+1}"] = layer_values_converted
+    
+    # for i, layer in enumerate(big_layers):
+    #      print("Layer", i+1, ":", layer)
+    
+    # combine the 5 2D arrays into a 3D array
+    array_3d = []
+    for i in range(1,6):
+        layer_2d = np.array(layers_ind[f'layer {i}']).reshape(5,5)
+        array_3d.append(layer_2d)
+        
+    array_3d = np.array(array_3d)    # from list to array; (5, 5, 5)
+    
+    # viewer = napari.Viewer()
+    # viewer.add_image(array_3d)
+    # napari.run()
+
+    return dose, subpots, subpots_converted, big_layers, big_layers_converted, layers_ind, layers_ind_converted, file_name
+
+######## dose rate on each pots (summed up and averaged)
+
+def plot_1(subpots, file_name, subpots_2=None, file_name_2=None, external_window=False):
+    
+    if external_window:
+        plt.figure(figsize=(12, 8))
+    
+    num_subplots = range(1, 26)
+    plt.plot(num_subplots, subpots, marker='o', linestyle='-')
+
+    if subpots_2 is not None and file_name_2 is not None:
+        plt.plot(num_subplots, subpots_2, marker='o', linestyle='-')
+        plt.legend([file_name, file_name_2])
+    else:
+        plt.legend([file_name])
+
+    plt.xlabel('Subplots', fontsize = 15)
+    plt.ylabel('Dose Rate ($\mu$Sv/hr)', fontsize = 15)
+    plt.title('Dose Rate of the Subplots', fontsize = 20)
+    plt.ylim(int(min(subpots))-1, int(max(subpots))+3)
+    
+    plt.yticks(range(  int(min(subpots))-1, int(max(subpots))+3)   )
+    plt.minorticks_off()
+    
+    plt.grid()
+    
+    plt.show()
+    
+####### uniformity across the pots in contour
+  
+def plot_2(subpots, file_name, external_window = False):
+    # if external_window:
+    #     plt.figure(figsize=(15, 12))
+    
+    dose_shaped = np.array(subpots).reshape((5, 5)) 
+    # print('max(subpots):', max(subpots))
+    
+    d_max = max(subpots)
+    d_min = 0
+    # plt.imshow(dose_shaped, cmap='jet', interpolation='none', vmin=np.amin(dose_shaped), vmax=np.amax(dose_shaped))
+    plt.imshow(dose_shaped, cmap='jet', interpolation='none', vmin=d_min, vmax=d_max)
+
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=15)
+    # cbar.ax.set_yticks([])     # get rid of ticks and lables on the bar
+
+    plt.grid(True, which='both', color='black', linewidth=1)
+    plt.xticks(np.arange(-0.5, 5.5, 1), [])
+    plt.yticks(np.arange(-0.5, 5.5, 1), []) 
+    
+    print(file_name)
+    plt.title('Dose distribution on the subpots', fontsize=15, pad = 20)
+
+    for i in range(5):
+        for j in range(5):
+            plt.text(j, i, str(i * 5 + j + 1), ha='center', va='center', color='white', fontsize=15)
+
+    # plt.text(6.3, 2, 'Dose Rate ($\mu$Sv/hr)', rotation=90, ha='center', va='center', fontsize=15)
+
+    plt.show()
+
+######## variation in uniformity on each pot
+
+def plot_3(layers_ind_converted, file_name, external_window = False):
+    x = range(1,26)
+    
+    # if external_window:
+    #     plt.figure(figsize=(15, 12))
+
+    plt.plot(x, layers_ind_converted['layer 5'], marker='.', linestyle='-')
+    plt.plot(x, layers_ind_converted['layer 4'], marker='.', linestyle='-')
+    plt.plot(x, layers_ind_converted['layer 3'], marker='.', linestyle='-')
+    plt.plot(x, layers_ind_converted['layer 2'], marker='.', linestyle='-')
+    plt.plot(x, layers_ind_converted['layer 1'], marker='.', linestyle='-')
+
+    plt.xlabel('Subpots', fontsize = 15)
+    plt.ylabel('Dose Rate ($\mu$Sv/hr)', fontsize = 15)
+    plt.title('[' + file_name + '] Modelled Dose Rate on each layer', fontsize = 20)
+    plt.legend(labels=['layer 5 (top)', 'layer 4', 'layer 3', 'layer 2', 'layer 1 (bottom)'], loc='upper right', framealpha=0.5)
+    
+    min_val = int(min(layers_ind_converted['layer 5']))
+    max_val = int(max(layers_ind_converted['layer 1']))+3
+    plt.ylim(min_val, max_val)
+    plt.yticks(range(min_val, max_val, 1))
+    plt.grid('True')
+    plt.show()
+    
+    std_value = f"{np.std(layers_ind_converted['layer 3']):.4f}"
+    mean_value = f"{np.mean(layers_ind_converted['layer 3']):.4f}"
+
+    print('std: ', std_value, 'mean: ', mean_value)#, 'dif: ', dif)
+    
+def plot_3_1(layers_ind, file_name, external_window = False):
+    x = range(1,26)
+    
+    # if external_window:
+    #     plt.figure(figsize=(15, 12))
+
+    plt.plot(x, layers_ind['layer 5'], marker='.', linestyle='-')
+    plt.plot(x, layers_ind['layer 4'], marker='.', linestyle='-')
+    plt.plot(x, layers_ind['layer 3'], marker='.', linestyle='-')
+    plt.plot(x, layers_ind['layer 2'], marker='.', linestyle='-')
+    plt.plot(x, layers_ind['layer 1'], marker='.', linestyle='-')
+
+    plt.xlabel('Subpots', fontsize = 15)
+    plt.ylabel('Dose (Gy/particle)', fontsize = 15)
+    plt.title('Modelled Dose on each layer', fontsize = 20)
+    plt.legend(labels=['layer 5 (top)', 'layer 4', 'layer 3', 'layer 2', 'layer 1 (bottom)'], loc='upper right', framealpha=0.5)
+    
+    # min_val = int(min(layers_ind['layer 5']))
+    
+    upper_lim = max(layers_ind['layer 1'])
+    max_val = (float(str(upper_lim).split('e')[0]) + 3) * (10**(float(str(upper_lim).split('e')[1])))
+    # max_val = int(max(layers_ind['layer 1']))+3
+    plt.ylim(0, max_val)
+    # plt.yticks(range(min_val, max_val, 1))
+    plt.grid('True')
+    plt.show()
+    
+    std_value = f"{np.std(layers_ind_converted['layer 3']):.4f}"
+    mean_value = f"{np.mean(layers_ind_converted['layer 3']):.4f}"
+
+    print('std: ', std_value, 'mean: ', mean_value)#, 'dif: ', dif)
+
+######## dose rate according to depth from root
+
+def plot_4(big_layers_converted, file_name, external_window = False):
+    layers = ['layer 1 (bottom)', 'layer 2', 'layer 3', 'layer 4', 'layer 5 (top)']
+    
+    if external_window:
+        plt.figure(figsize=(12, 12))
+
+    plt.plot(np.arange(0.5, 5.5, 1), big_layers_converted, marker='o', linestyle='-', color = 'orange')
+
+    # if big_layers_2 is not None and file_name_2 is not None:
+    #     plt.plot(np.arange(0.5, 5.5, 1), big_layers_2, marker='o', linestyle='-')
+    #     plt.legend([file_name, file_name_2])
+
+    #     for x, y, layer in zip(np.arange(0.5, 5.5, 1), big_layers_2, layers):
+    #         plt.text(x, y, layer, ha='left', va='bottom')
+    # else:
+    # fsplit = file_name('_')
+    # distance = fsplit[-2]
+    # source_number = fsplit[-1]
+    
+    # plt.legend(num_source + ' sources at' + distance + 'cm')
+
+    for x, y, layer in zip(np.arange(0.5, 5.5, 1), big_layers_converted, layers):
+        plt.text(x, y, layer, ha='left', va='bottom')
+
+    plt.xlabel('Depth from roots (cm)', fontsize = 15)
+    plt.ylabel('Modelled Dose Rate ($\mu$Sv/hr)', fontsize = 15)
+    plt.title('Dose Rate according to depth', fontsize = 20)
+    plt.grid('True')
+
+    plt.show()
+    print(big_layers_converted)
+    
+######## dose rate on a specified sub pot
+
+def plot_5(layers_ind, file_name, pot_num, external_window = False):
+    
+    if external_window:
+        plt.figure(figsize=(12, 12))
+        
+    layers = ['layer 1 (bottom)', 'layer 2', 'layer 3', 'layer 4', 'layer 5 (top)']
+    sublayers = []
+    for key in list(layers_ind):
+        each_sub = layers_ind[key][pot_num]     # put the number desired to see 
+        sublayers.append(each_sub)
+    
+    print(sublayers[0], sublayers[2])
+    
+    ratio = sublayers[0] / sublayers[2]
+    print('ratio of sublayer [1] to [3] of pot[',pot_num+1,']: ', f'{ratio:.3f}')
+        
+    plt.plot(np.arange(0.5, 5.5, 1), sublayers, marker='o', linestyle='-')
+    plt.legend([file_name])
+    
+    for x, y, layer in zip(np.arange(0.5, 5.5, 1), sublayers, layers):
+        plt.text(x, y, layer, ha='left', va='bottom')
+    
+    plt.xlabel('Depth from roots (in cm)', fontsize = 30)
+    plt.ylabel('Dose Rate ($\mu$Sv/hr)', fontsize = 30)
+    plt.title('Sublayer of pot ['+str(pot_num+1)+'] dose rate according to depth', fontsize = 35)
+    plt.grid()
+
+    plt.show()
+
+# main code running
+
+source = ['Cs', 'Am']
+soil = ['LHS', 'LHS2']
+photons = ['1e6', '1e7', '5e7']
+external_window = False
+
+if external_window:
+    value = True
+    get_ipython().run_line_magic('matplotlib', 'qt5')
+else:
+    value = False
+    %matplotlib inline
+
+# call the files
+
+dose, subpots, subpots_converted, big_layers, big_layers_converted, layers_ind, layers_ind_converted, file_name = process_file(source[0], soil[1], photons[1], '10', '13')
+#subpots_2, big_layers_2, layers_ind_2, array_3d_2, file_name_2 = process_file(source[0], soil[0], photons[1], distance[3], num_source[3])
+
+# plotting
+
+plot_1(subpots, file_name, subpots_2 = None, file_name_2 = None, external_window = value)
+
+plot_2(subpots, file_name, external_window = value)
+
+plot_3(layers_ind_converted, file_name, external_window = value)
+plot_3_1(layers_ind, file_name, external_window = value)
+
+plot_4(big_layers_converted, file_name, external_window = value)
+
+plot_5(layers_ind, file_name, 12, external_window = value)
+#plot_5(layers_ind_2, file_name_2, 12)
+
+# for i in range(25):
+#     plot_5(layers_ind, file_name,i)
+
+# Xs = []
+# for i in range(25):
+#     mean = sum(layers_ind['layer 3']) / len(layers_ind['layer 3'])
+#     X = (layers_ind['layer 3'][i] - mean)**2
+#     Xs.append(X)
+
+# std = np.sqrt( (sum(Xs))/ (len(layers_ind['layer 3']) - 1))
+# print(std)
